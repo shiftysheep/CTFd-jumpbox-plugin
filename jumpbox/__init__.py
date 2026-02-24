@@ -16,7 +16,7 @@ from .functions.functions import ssh_user_add
 from .models.models import JumpboxConfig, JumpboxConfigForm, JumpboxUsers
 
 
-def define_terminal_app(app):
+def define_jumpbox_config_app(app):
     admin_jumpbox_config = Blueprint(
         "admin_jumpbox_config", __name__, template_folder="templates"
     )
@@ -89,7 +89,7 @@ def define_jumpbox_user_status(app):
         "user_jumpbox_status", __name__, template_folder="templates"
     )
 
-    @user_jumpbox_status.route("/terminal", methods=["GET", "POST"])
+    @user_jumpbox_status.route("/jumpbox", methods=["GET", "POST"])
     @authed_only
     def user_status():
         J = JumpboxConfig.query.filter_by(id=1).first()
@@ -146,7 +146,7 @@ def define_jumpbox_user_status(app):
 
 def load(app):
     app.db.create_all()
-    define_terminal_app(app)
+    define_jumpbox_config_app(app)
     define_user_management(app)
     define_jumpbox_user_status(app)
     CTFd_API_v1.add_namespace(delete_jump_users, "/delete_jump_user")
