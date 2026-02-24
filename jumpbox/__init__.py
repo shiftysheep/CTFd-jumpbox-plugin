@@ -110,7 +110,7 @@ def define_jumpbox_user_status(app):
                 password = randomvalue[8:]
                 jumpbox.username = username
                 jumpbox.password = password
-                if is_teams_mode:
+                if is_teams_mode():
                     jumpbox.team_id = session.id
                 else:
                     jumpbox.user_id = session.id
