@@ -1,3 +1,4 @@
+import logging
 import os
 import tempfile
 from pathlib import Path
@@ -13,10 +14,18 @@ from CTFd.utils.user import get_current_team, get_current_user
 
 from .api.api import delete_jump_users
 from .functions.functions import ssh_user_add
+from .functions.ssm import (
+    JUMPBOX_SSM_HOSTNAME_PARAMETER,
+    JUMPBOX_SSM_KEY_PARAMETER,
+    JUMPBOX_SSM_USERNAME_PARAMETER,
+    get_ssm_config,
+)
 from .models.models import JumpboxConfig, JumpboxConfigForm, JumpboxUsers
 
+logger = logging.getLogger(__name__)
 
-def define_terminal_app(app):
+
+def define_jumpbox_config_app(app):
     admin_jumpbox_config = Blueprint(
         "admin_jumpbox_config", __name__, template_folder="templates"
     )
@@ -55,7 +64,17 @@ def define_terminal_app(app):
             jumpbox.private_key = (
                 jumpbox.private_key if Path(jumpbox.private_key).exists() else None
             )
-        return render_template("jumpbox_config.html", config=jumpbox, form=form)
+        ssm_active = any(
+            os.environ.get(v)
+            for v in [
+                JUMPBOX_SSM_KEY_PARAMETER,
+                JUMPBOX_SSM_HOSTNAME_PARAMETER,
+                JUMPBOX_SSM_USERNAME_PARAMETER,
+            ]
+        )
+        return render_template(
+            "jumpbox_config.html", config=jumpbox, form=form, ssm_active=ssm_active
+        )
 
     app.register_blueprint(admin_jumpbox_config)
 
@@ -89,7 +108,7 @@ def define_jumpbox_user_status(app):
         "user_jumpbox_status", __name__, template_folder="templates"
     )
 
-    @user_jumpbox_status.route("/terminal", methods=["GET", "POST"])
+    @user_jumpbox_status.route("/jumpbox", methods=["GET", "POST"])
     @authed_only
     def user_status():
         J = JumpboxConfig.query.filter_by(id=1).first()
@@ -110,7 +129,7 @@ def define_jumpbox_user_status(app):
                 password = randomvalue[8:]
                 jumpbox.username = username
                 jumpbox.password = password
-                if is_teams_mode:
+                if is_teams_mode():
                     jumpbox.team_id = session.id
                 else:
                     jumpbox.user_id = session.id
@@ -144,9 +163,38 @@ def define_jumpbox_user_status(app):
     app.register_blueprint(user_jumpbox_status)
 
 
+def _apply_ssm_config(app):
+    """Load jumpbox configuration from AWS SSM Parameter Store if configured."""
+    ssm_config = get_ssm_config()
+    if not any(ssm_config.values()):
+        return
+
+    with app.app_context():
+        jumpbox = JumpboxConfig.query.filter_by(id=1).first()
+        if not jumpbox:
+            jumpbox = JumpboxConfig()
+
+        if ssm_config["private_key_path"]:
+            jumpbox.private_key = ssm_config["private_key_path"]
+        if ssm_config["hostname"]:
+            jumpbox.hostname = ssm_config["hostname"]
+        if ssm_config["username"]:
+            jumpbox.username = ssm_config["username"]
+
+        # Auto-enable if all three values are present after merge
+        if jumpbox.private_key and jumpbox.hostname and jumpbox.username:
+            jumpbox.enabled = True
+            logger.info("Jumpbox auto-enabled: all config values present")
+
+        db.session.add(jumpbox)
+        db.session.commit()
+        logger.info("Applied SSM configuration to jumpbox")
+
+
 def load(app):
     app.db.create_all()
-    define_terminal_app(app)
+    _apply_ssm_config(app)
+    define_jumpbox_config_app(app)
     define_user_management(app)
     define_jumpbox_user_status(app)
     CTFd_API_v1.add_namespace(delete_jump_users, "/delete_jump_user")

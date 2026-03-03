@@ -8,6 +8,11 @@
 <div class="container">
     <div class="row">
         <div class="col-md-6 offset-md-3">
+            {% if ssm_active %}
+            <div class="alert alert-info" role="alert">
+                Jumpbox configuration is being loaded from AWS SSM Parameter Store. Manual changes will be overridden on next restart.
+            </div>
+            {% endif %}
             {% for error in errors %}
             <div class="alert alert-danger alert-dismissable" role="alert">
                 <span class="sr-only">Error:</span>
